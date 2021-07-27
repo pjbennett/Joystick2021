@@ -1,0 +1,685 @@
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file           : main.c
+  * @brief          : Main program body
+  ******************************************************************************
+  * @attention
+  *
+  * <h2><center>&copy; Copyright (c) 2020 STMicroelectronics.
+  * All rights reserved.</center></h2>
+  *
+  * This software component is licensed by ST under BSD 3-Clause license,
+  * the "License"; You may not use this file except in compliance with the
+  * License. You may obtain a copy of the License at:
+  *                        opensource.org/licenses/BSD-3-Clause
+  *
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+/* Includes ------------------------------------------------------------------*/
+#include "main.h"
+
+/* Private includes ----------------------------------------------------------*/
+/* USER CODE BEGIN Includes */
+#include "ssd1306.h"
+#include "ssd1306_tests.h"
+#include <string.h>
+#include <stdio.h>
+
+/* USER CODE END Includes */
+
+/* Private typedef -----------------------------------------------------------*/
+/* USER CODE BEGIN PTD */
+
+/* USER CODE END PTD */
+
+/* Private define ------------------------------------------------------------*/
+/* USER CODE BEGIN PD */
+#define ADC_BUF_LEN 500
+#define FOCUS 0
+#define ZOOM 1
+#define PAN 2
+#define TILT 3
+#define ROLL 4
+
+#define AVG_FOCUS 20
+#define AVG_ZOOM 20
+
+
+/* USER CODE END PD */
+
+/* Private macro -------------------------------------------------------------*/
+/* USER CODE BEGIN PM */
+
+/* USER CODE END PM */
+
+/* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc2;
+DMA_HandleTypeDef hdma_adc2;
+
+SPI_HandleTypeDef hspi2;
+
+UART_HandleTypeDef huart2;
+
+/* USER CODE BEGIN PV */
+uint16_t adc_buf[ADC_BUF_LEN];
+uint16_t adcValue[5];
+uint8_t dataTX[15];
+
+uint16_t headData[10];
+uint32_t avgFocus;
+uint16_t avgFocusData[1000];
+uint32_t avgZoom;
+uint16_t avgZoomData[1000];
+uint16_t count_focus;
+uint16_t count_zoom;
+uint8_t rollStatus;
+/* USER CODE END PV */
+
+/* Private function prototypes -----------------------------------------------*/
+void SystemClock_Config(void);
+static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
+static void MX_SPI2_Init(void);
+static void MX_ADC2_Init(void);
+static void MX_USART2_UART_Init(void);
+/* USER CODE BEGIN PFP */
+
+/* USER CODE END PFP */
+
+/* Private user code ---------------------------------------------------------*/
+/* USER CODE BEGIN 0 */
+
+/* USER CODE END 0 */
+
+/**
+  * @brief  The application entry point.
+  * @retval int
+  */
+int main(void)
+{
+  /* USER CODE BEGIN 1 */
+
+	char displayBuff[40];
+
+
+  /* USER CODE END 1 */
+
+  /* MCU Configuration--------------------------------------------------------*/
+
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  HAL_Init();
+
+  /* USER CODE BEGIN Init */
+
+  /* USER CODE END Init */
+
+  /* Configure the system clock */
+  SystemClock_Config();
+
+  /* USER CODE BEGIN SysInit */
+
+  /* USER CODE END SysInit */
+
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_DMA_Init();
+  MX_SPI2_Init();
+  MX_ADC2_Init();
+  MX_USART2_UART_Init();
+  /* USER CODE BEGIN 2 */
+  HAL_Delay(100);
+  ssd1306_Init();
+  //ssd1306_TestAll();
+
+  ssd1306_Fill(Black);
+  ssd1306_SetCursor(2, 0);
+  ssd1306_WriteString("SUPRACAM - CAMERA OP", Font_6x8, White);
+  ssd1306_SetCursor(2, 10);
+  ssd1306_WriteString("CONTROL PANEL", Font_6x8, White);
+  ssd1306_SetCursor(2, 20);
+  ssd1306_WriteString("VERSION 1.14", Font_6x8, White);
+
+  ssd1306_DrawRectangle(8,40,112,50,White);
+  ssd1306_DrawRectangle(8,53,112,63,White);
+
+  ssd1306_UpdateScreen();
+
+  HAL_ADC_Start_DMA(&hadc2, (uint32_t*)adc_buf, ADC_BUF_LEN);
+
+  headData[FOCUS] = 2500;
+  headData[ZOOM] = 2048;
+  headData[PAN] = 1024;
+  headData[TILT] = 1024;
+  headData[ROLL] = 1024;
+
+
+  /* USER CODE END 2 */
+
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
+  while (1)
+  {
+
+	  //HAL_ADC_Start(&hadc2);
+	  //HAL_ADC_PollForConversion(&hadc2, HAL_MAX_DELAY);
+	  //adcValue = HAL_ADC_GetValue(&hadc2);
+
+	  /*
+	  HAL_GPIO_WritePin(LED_STAT_GPIO_Port, LED_STAT_Pin, GPIO_PIN_RESET);
+	  HAL_GPIO_WritePin(LED_SERVO_GPIO_Port, LED_SERVO_Pin, GPIO_PIN_RESET);
+	  HAL_Delay(800); //appx 60 fps screen refresh
+	  HAL_GPIO_WritePin(LED_STAT_GPIO_Port, LED_STAT_Pin, GPIO_PIN_SET);
+	  HAL_GPIO_WritePin(LED_SERVO_GPIO_Port, LED_SERVO_Pin, GPIO_PIN_SET);
+	  HAL_Delay(200);
+	  */
+
+	  //average focus data
+
+		avgFocusData[count_focus] = adcValue[4];
+		count_focus++;
+		if (count_focus > (AVG_FOCUS-1))
+			count_focus = 0;
+
+		avgFocus = 0;
+		for (int i = 0; i<AVG_FOCUS; i++)
+		{
+			avgFocus = avgFocus + avgFocusData[i];
+		}
+		avgFocus = avgFocus/AVG_FOCUS;
+		avgFocus = (avgFocus/2)+1024;
+
+
+		avgZoomData[count_zoom] = adcValue[1];
+		count_zoom++;
+		if (count_zoom > (AVG_ZOOM-1))
+			count_zoom = 0;
+
+		avgZoom = 0;
+		for (int i = 0; i<AVG_ZOOM; i++)
+		{
+			avgZoom = avgZoom + avgZoomData[i];
+		}
+		avgZoom = avgZoom/AVG_ZOOM;
+		//avgFocus = (avgFocus/2)+1024;
+
+
+
+	  //headData[FOCUS] = (adc_buf[9]/2)+1024;
+	  headData[FOCUS] = avgFocus;
+
+	  int16_t zoomValue = adcValue[1];
+	  if (zoomValue < 1750)
+	  {
+		  zoomValue = zoomValue - 1750;
+	  }
+	  else if (zoomValue > 2000)
+	  {
+		  zoomValue = zoomValue - 2000;
+	  }
+	  else
+	  {
+		  zoomValue = 0;
+	  }
+	  zoomValue = zoomValue * 0.5; //scale value
+	  if (zoomValue > 1000)
+		  zoomValue = 1000;
+	  if (zoomValue < -1000)
+		  zoomValue = -1000;
+
+	  headData[ZOOM] = (zoomValue*-1)+2048;
+
+	  int16_t panValue = adcValue[2];
+	  if (panValue < 1700)
+	  {
+		  panValue = panValue - 1700;
+	  }
+	  else if (panValue > 2050)
+	  {
+		  panValue = panValue - 2050;
+	  }
+	  else
+	  {
+		  panValue = 0;
+	  }
+	  panValue = panValue * 0.3; //scale value
+	  if (panValue > 500)
+		  panValue = 500;
+	  if (panValue < -500)
+		  panValue = -500;
+
+	  headData[PAN] = (panValue*-1)+1024;
+
+
+	  int16_t tiltValue = adcValue[3];
+	  if (tiltValue < 1650)
+	  {
+		  tiltValue = tiltValue - 1650;
+	  }
+	  else if (tiltValue > 2000)
+	  {
+		  tiltValue = tiltValue - 2000;
+	  }
+	  else
+	  {
+		  tiltValue = 0;
+	  }
+	  tiltValue = tiltValue * 0.3; //scale value
+	  if (tiltValue > 500)
+		  tiltValue = 500;
+	  if (tiltValue < -500)
+		  tiltValue = -500;
+
+	  //headData[TILT] = (tiltValue*-1)+1024; //airplane - stick up is tilt down
+	  headData[TILT] = (tiltValue)+1024; //cam-op - stick up is tilt up
+
+
+	  if (HAL_GPIO_ReadPin(SERVO_SW_GPIO_Port, SERVO_SW_Pin))
+	  {
+		  rollStatus = 0;
+	  }
+	  else
+	  {
+		  rollStatus = 1;
+	  }
+
+	  int16_t rollValue = adcValue[0];
+	  if (rollValue < 1650)
+	  {
+		  rollValue = rollValue - 1650;
+	  }
+	  else if (rollValue > 2000)
+	  {
+		  rollValue = rollValue - 2000;
+	  }
+	  else
+	  {
+		  rollValue = 0;
+	  }
+	  rollValue = rollValue * 0.3; //scale value
+	  if (rollValue > 500)
+		  rollValue = 500;
+	  if (rollValue < -500)
+		  rollValue = -500;
+
+	  if (rollStatus == 0)
+	  {
+		  rollValue = 0;
+	  }
+
+	  headData[ROLL] = (rollValue*-1)+1024;
+
+
+	  ssd1306_Fill(Black);
+	  ssd1306_SetCursor(2, 0);
+	  ssd1306_WriteString("SUPRACAM - CAMERA OP", Font_6x8, White);
+	  ssd1306_SetCursor(2, 10);
+	  //sprintf(displayBuff,"X1:%04d  X2:%04d", adcValue[0], adcValue[2]);
+	  sprintf(displayBuff,"PAN:%04d   TILT:%04d", panValue, tiltValue);
+	  ssd1306_WriteString(displayBuff, Font_6x8, White);
+	  ssd1306_SetCursor(2, 20);
+
+	  if (rollStatus)
+	  {
+		  sprintf(displayBuff,"ROLL:%04d  %s", rollValue, "ON   v1.2");
+	  }
+	  else
+	  {
+		  sprintf(displayBuff,"ROLL:%04d  %s", rollValue, "OFF  v1.2");
+	  }
+	  ssd1306_WriteString(displayBuff, Font_6x8, White);
+	  ssd1306_SetCursor(2, 30);
+	  sprintf(displayBuff,"ZOOM:%04d  FOCUS:%04d", zoomValue, headData[FOCUS]);
+	  //sprintf(displayBuff,"FOCUS:%04d", headData[FOCUS]);
+	  ssd1306_WriteString(displayBuff, Font_6x8, White);
+
+	  ssd1306_DrawRectangle(8,40,112,50,White);
+	  ssd1306_DrawRectangle(8,53,112,63,White);
+
+	  ssd1306_UpdateScreen();
+
+	  dataTX[0] = 0xAA;
+	  dataTX[1] = (uint8_t)(headData[FOCUS] >> 8);
+	  dataTX[2] = (uint8_t)headData[FOCUS];
+	  dataTX[3] = (uint8_t)(headData[ZOOM] >> 8);
+	  dataTX[4] = (uint8_t)headData[ZOOM];
+	  dataTX[5] = (uint8_t)(headData[PAN] >> 8);
+	  dataTX[6] = (uint8_t)headData[PAN];
+	  dataTX[7] = (uint8_t)(headData[TILT] >> 8);
+	  dataTX[8] = (uint8_t)headData[TILT];
+	  dataTX[9] = (uint8_t)(headData[ROLL] >> 8);
+	  dataTX[10] = (uint8_t)headData[ROLL];
+	  dataTX[11] = 0x55;
+
+	  HAL_UART_Transmit_IT(&huart2, dataTX , 12);
+	  HAL_Delay(10);
+
+    /* USER CODE END WHILE */
+
+    /* USER CODE BEGIN 3 */
+  }
+  /* USER CODE END 3 */
+}
+
+/**
+  * @brief System Clock Configuration
+  * @retval None
+  */
+void SystemClock_Config(void)
+{
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
+
+  /** Initializes the RCC Oscillators according to the specified parameters
+  * in the RCC_OscInitTypeDef structure.
+  */
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL2;
+  RCC_OscInitStruct.PLL.PREDIV = RCC_PREDIV_DIV1;
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Initializes the CPU, AHB and APB buses clocks
+  */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART2|RCC_PERIPHCLK_ADC12;
+  PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
+  PeriphClkInit.Adc12ClockSelection = RCC_ADC12PLLCLK_DIV1;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+/**
+  * @brief ADC2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC2_Init(void)
+{
+
+  /* USER CODE BEGIN ADC2_Init 0 */
+
+  /* USER CODE END ADC2_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC2_Init 1 */
+
+  /* USER CODE END ADC2_Init 1 */
+  /** Common config
+  */
+  hadc2.Instance = ADC2;
+  hadc2.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV1;
+  hadc2.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc2.Init.ScanConvMode = ADC_SCAN_ENABLE;
+  hadc2.Init.ContinuousConvMode = ENABLE;
+  hadc2.Init.DiscontinuousConvMode = DISABLE;
+  hadc2.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc2.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc2.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc2.Init.NbrOfConversion = 5;
+  hadc2.Init.DMAContinuousRequests = ENABLE;
+  hadc2.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  hadc2.Init.LowPowerAutoWait = DISABLE;
+  hadc2.Init.Overrun = ADC_OVR_DATA_OVERWRITTEN;
+  if (HAL_ADC_Init(&hadc2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_1;
+  sConfig.Rank = ADC_REGULAR_RANK_1;
+  sConfig.SingleDiff = ADC_SINGLE_ENDED;
+  sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
+  sConfig.OffsetNumber = ADC_OFFSET_NONE;
+  sConfig.Offset = 0;
+  if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_2;
+  sConfig.Rank = ADC_REGULAR_RANK_2;
+  if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_3;
+  sConfig.Rank = ADC_REGULAR_RANK_3;
+  if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_4;
+  sConfig.Rank = ADC_REGULAR_RANK_4;
+  if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_5;
+  sConfig.Rank = ADC_REGULAR_RANK_5;
+  if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC2_Init 2 */
+
+  /* USER CODE END ADC2_Init 2 */
+
+}
+
+/**
+  * @brief SPI2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI2_Init(void)
+{
+
+  /* USER CODE BEGIN SPI2_Init 0 */
+
+  /* USER CODE END SPI2_Init 0 */
+
+  /* USER CODE BEGIN SPI2_Init 1 */
+
+  /* USER CODE END SPI2_Init 1 */
+  /* SPI2 parameter configuration*/
+  hspi2.Instance = SPI2;
+  hspi2.Init.Mode = SPI_MODE_MASTER;
+  hspi2.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi2.Init.NSS = SPI_NSS_SOFT;
+  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi2.Init.CRCPolynomial = 7;
+  hspi2.Init.CRCLength = SPI_CRC_LENGTH_DATASIZE;
+  hspi2.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  if (HAL_SPI_Init(&hspi2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI2_Init 2 */
+
+  /* USER CODE END SPI2_Init 2 */
+
+}
+
+/**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA2_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA2_Channel1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Channel1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Channel1_IRQn);
+
+}
+
+/**
+  * @brief GPIO Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_GPIO_Init(void)
+{
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+  /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOF_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(LED_STAT_GPIO_Port, LED_STAT_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, LED_SERVO_Pin|OLED_CS_Pin|OLED_DC_Pin|OLED_RST_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : LED_STAT_Pin */
+  GPIO_InitStruct.Pin = LED_STAT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(LED_STAT_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : LED_SERVO_Pin OLED_CS_Pin OLED_DC_Pin OLED_RST_Pin */
+  GPIO_InitStruct.Pin = LED_SERVO_Pin|OLED_CS_Pin|OLED_DC_Pin|OLED_RST_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : SERVO_SW_Pin */
+  GPIO_InitStruct.Pin = SERVO_SW_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(SERVO_SW_GPIO_Port, &GPIO_InitStruct);
+
+}
+
+/* USER CODE BEGIN 4 */
+// Called when buffer is completely filled
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
+	adcValue[0] = adc_buf[0];
+	adcValue[1] = adc_buf[1];
+	adcValue[2] = adc_buf[2];
+	adcValue[3] = adc_buf[3];
+	adcValue[4] = adc_buf[4];
+
+
+
+	//avgFocus = 0;
+	//for (uint8_t i=0;i<25;i++)
+	//{
+	//	avgFocus = avgFocus + adc_buf[4+(i*5)];
+	//}
+	//avgFocus = avgFocus/25;
+
+
+
+}
+
+/* USER CODE END 4 */
+
+/**
+  * @brief  This function is executed in case of error occurrence.
+  * @retval None
+  */
+void Error_Handler(void)
+{
+  /* USER CODE BEGIN Error_Handler_Debug */
+  /* User can add his own implementation to report the HAL error return state */
+
+  /* USER CODE END Error_Handler_Debug */
+}
+
+#ifdef  USE_FULL_ASSERT
+/**
+  * @brief  Reports the name of the source file and the source line number
+  *         where the assert_param error has occurred.
+  * @param  file: pointer to the source file name
+  * @param  line: assert_param error line source number
+  * @retval None
+  */
+void assert_failed(uint8_t *file, uint32_t line)
+{
+  /* USER CODE BEGIN 6 */
+  /* User can add his own implementation to report the file name and line number,
+     tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+  /* USER CODE END 6 */
+}
+#endif /* USE_FULL_ASSERT */
+
+/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
